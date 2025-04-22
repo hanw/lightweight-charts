@@ -283,10 +283,13 @@ export class PolylineDrawingTool implements ISeriesPrimitive<Time> {
     _active: boolean = false;
     _clickHandler: ((param: MouseEventParams) => void) | null = null;
     _moveHandler: ((param: MouseEventParams) => void) | null = null;
+    _keydownHandler: ((e: KeyboardEvent) => void) | null = null; // Keyboard event handler for ESC key
     _tempPoint: PolylinePoint | null = null;
     _requestUpdate: (() => void) | null = null;
     _toolbarContainer: HTMLDivElement | null = null;
     _toolbarButton: HTMLDivElement | null = null;
+    _pointCount: number = 0; // Track how many points have been added in the current polyline
+    _betweenPolylines: boolean = false; // Flag indicating if we're between completed polylines
 
     constructor(options: Partial<PolylineOptions> = {}) {
         this._options = { ...defaultOptions, ...options };
@@ -426,6 +429,69 @@ export class PolylineDrawingTool implements ISeriesPrimitive<Time> {
             console.log('🎨 Updated toolbar button appearance');
         }
         
+        // Setup event handlers
+        this._setupEventHandlers();
+        
+        // Add keyboard event listener for ESC key
+        this._setupKeyboardEvents();
+    }
+    
+    /**
+     * Setup keyboard event handlers
+     */
+    private _setupKeyboardEvents(): void {
+        // Remove any existing listener first to avoid duplicates
+        this._removeKeyboardEvents();
+        
+        // Add the ESC key handler to document
+        this._keydownHandler = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') {
+                console.log('🔄 ESC key pressed, resetting polyline');
+                this._resetPolyline();
+                e.preventDefault();
+            }
+        };
+        
+        document.addEventListener('keydown', this._keydownHandler);
+        console.log('⌨️ Keyboard events registered');
+    }
+    
+    /**
+     * Remove keyboard event handlers
+     */
+    private _removeKeyboardEvents(): void {
+        if (this._keydownHandler) {
+            document.removeEventListener('keydown', this._keydownHandler);
+            this._keydownHandler = null;
+            console.log('⌨️ Keyboard events unregistered');
+        }
+    }
+    
+    /**
+     * Reset the current polyline (clear points and start fresh)
+     */
+    private _resetPolyline(): void {
+        // Clear all points and temp point
+        this._points = [];
+        this._tempPoint = null;
+        this._pointCount = 0;
+        
+        // Make sure we're not in between polylines state
+        this._betweenPolylines = false;
+        
+        // Keep the drawing tool active
+        if (this._active) {
+            console.log('🔄 Polyline reset, ready for new drawing');
+        }
+        
+        // Update the view
+        this._updateView();
+    }
+    
+    /**
+     * Setup click handler and other event handlers
+     */
+    private _setupEventHandlers(): void {
         // Setup click handler
         this._clickHandler = (param: MouseEventParams) => {
             console.log('👆 Click event received', param);
@@ -457,42 +523,133 @@ export class PolylineDrawingTool implements ISeriesPrimitive<Time> {
                 return;
             }
             
-            // Add the point
-            console.log('➕ Adding point at time:', param.time, 'price:', price);
-            this._addPoint({
+            // If we're starting a new polyline, clear previous points
+            if (this._pointCount === 0) {
+                this.clearPoints();
+                this._betweenPolylines = false; // Ensure we're not in between polylines state
+                console.log('🆕 Starting new polyline');
+            }
+            
+            // Add the clicked point
+            const newPoint = {
                 time: param.time,
                 price: price
-            });
+            };
+            
+            console.log(`➕ Adding point ${this._pointCount + 1} at time:`, param.time, 'price:', price);
+            this._addPoint(newPoint);
+            this._pointCount++;
+            
+            // If this is the third point, calculate and add the fourth point
+            if (this._pointCount === 3) {
+                console.log('🔢 Third point added, calculating fourth point...');
+                
+                // Get the previous points
+                const firstPoint = this._points[0];
+                const secondPoint = this._points[1];
+                const thirdPoint = this._points[2];
+                
+                // Calculate the difference between second and first point's y-coordinate
+                const yDifference = secondPoint.price - firstPoint.price;
+                console.log(`📊 Y-coordinate difference between points 2 and 1: ${yDifference}`);
+                
+                // Calculate the fourth point based on the algorithm
+                let fourthPointPrice;
+                if (yDifference > 0) {
+                    // If difference is positive (second point is higher than first point),
+                    // fourth point should be higher than third point
+                    fourthPointPrice = thirdPoint.price + Math.abs(yDifference);
+                    console.log(`📈 Second > First, so Fourth > Third: fourth point price: ${fourthPointPrice}`);
+                } else if (yDifference < 0) {
+                    // If difference is negative (second point is lower than first point),
+                    // fourth point should be lower than third point
+                    fourthPointPrice = thirdPoint.price - Math.abs(yDifference);
+                    console.log(`📉 Second < First, so Fourth < Third: fourth point price: ${fourthPointPrice}`);
+                } else {
+                    // If difference is zero (second point has same y as first point),
+                    // fourth point should have same y as third point
+                    fourthPointPrice = thirdPoint.price;
+                    console.log(`📊 Second = First, so Fourth = Third: fourth point price: ${fourthPointPrice}`);
+                }
+                
+                // Create the fourth point with the same x-coordinate as the third point
+                const fourthPoint = {
+                    time: thirdPoint.time,
+                    price: fourthPointPrice
+                };
+                
+                console.log('✅ Adding fourth point:', fourthPoint);
+                this._addPoint(fourthPoint);
+                this._pointCount++;
+                
+                // Complete the polyline and deactivate drawing mode
+                console.log('🎨 Four-point polyline completed, deactivating drawing mode');
+                
+                // Temporarily save the active state
+                const wasActive = this._active;
+                
+                // Stop showing temporary preview line by nullifying the temp point
+                this._tempPoint = null;
+                
+                // Preserve the active state for new polyline, but ensure no preview between polylines
+                // We'll create a special flag to indicate we're in "between polylines" state
+                this._betweenPolylines = true;
+                this._updateView();
+                
+                // Schedule a reset for the point counter for the next polyline
+                setTimeout(() => {
+                    // Reset point counter for the next polyline
+                    this._pointCount = 0;
+                    
+                    // Keep the tool active for the next polyline if it was active before
+                    if (wasActive && this._toolbarButton) {
+                        // We're no longer between polylines
+                        this._betweenPolylines = false;
+                        console.log('🔄 Ready for a new polyline');
+                    }
+                }, 100);
+            }
         };
         
         // Setup move handler for dynamic preview
         this._moveHandler = (param: MouseEventParams) => {
-            if (!this._active || !param.point || !param.time || !this._series) {
-                this._tempPoint = null;
-                this._updateView();
+            // Don't show preview if not active or between polylines
+            if (!this._active || this._betweenPolylines || !param.point || !param.time || !this._series) {
+                if (this._tempPoint !== null) {
+                    this._tempPoint = null;
+                    this._updateView();
+                }
                 return;
             }
             
             const price = this._series.coordinateToPrice(param.point.y);
             if (price === null) {
-                this._tempPoint = null;
-                this._updateView();
+                if (this._tempPoint !== null) {
+                    this._tempPoint = null;
+                    this._updateView();
+                }
                 return;
             }
             
-            this._tempPoint = {
-                time: param.time,
-                price: price
-            };
-            
-            this._updateView();
+            // Only update temp point if we have at least one point
+            // and we're not between polylines
+            if (this._pointCount > 0 && !this._betweenPolylines) {
+                this._tempPoint = {
+                    time: param.time,
+                    price: price
+                };
+                
+                this._updateView();
+            }
         };
 
-        // Subscribe to events
-        console.log('Subscribing click handler:', !!this._clickHandler);
-        this._chart.subscribeClick(this._clickHandler);
-        console.log('Subscribing move handler:', !!this._moveHandler);
-        this._chart.subscribeCrosshairMove(this._moveHandler);
+        // Subscribe to chart events
+        if (this._chart) {
+            console.log('Subscribing click handler:', !!this._clickHandler);
+            this._chart.subscribeClick(this._clickHandler);
+            console.log('Subscribing move handler:', !!this._moveHandler);
+            this._chart.subscribeCrosshairMove(this._moveHandler);
+        }
         
         // Add a direct DOM click handler for debugging
         const chartElement = this._chart.chartElement();
@@ -518,7 +675,7 @@ export class PolylineDrawingTool implements ISeriesPrimitive<Time> {
             this._toolbarButton.style.color = '#333';
         }
         
-        // Unsubscribe from events
+        // Unsubscribe from chart events
         if (this._clickHandler) {
             this._chart.unsubscribeClick(this._clickHandler);
             this._clickHandler = null;
@@ -529,10 +686,15 @@ export class PolylineDrawingTool implements ISeriesPrimitive<Time> {
             this._moveHandler = null;
         }
         
+        // Remove keyboard event listeners
+        this._removeKeyboardEvents();
+        
         this._active = false;
         this._chart = null;
         this._series = null;
         this._tempPoint = null;
+        this._pointCount = 0; // Reset point counter when deactivating
+        this._betweenPolylines = false; // Reset between polylines flag
         this._updateView();
     }
 
@@ -568,8 +730,11 @@ export class PolylineDrawingTool implements ISeriesPrimitive<Time> {
      * Clear all points in the polyline
      */
     clearPoints(): void {
+        console.log('🧹 Clearing all points');
         this._points = [];
         this._tempPoint = null;
+        this._pointCount = 0; // Reset point counter when clearing
+        this._betweenPolylines = false; // Reset between polylines flag
         this._updateView();
     }
 
@@ -623,8 +788,14 @@ export class PolylineDrawingTool implements ISeriesPrimitive<Time> {
     }
 
     detached(): void {
+        // Ensure keyboard events are removed when the primitive is detached
+        this._removeKeyboardEvents();
+        
+        // Call deactivate to clean up other resources
         this.deactivate();
         this._requestUpdate = null;
+        
+        console.log('🔌 Polyline tool fully detached');
     }
 
     /**

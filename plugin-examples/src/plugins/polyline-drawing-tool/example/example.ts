@@ -60,34 +60,7 @@ if (chartContainer) {
     polylineTool.activate(chart, lineSeries);
     console.log('Polyline tool activated:', polylineTool._active);
     
-    // Add test button for manually adding a point
-    const testButton = document.createElement('button');
-    testButton.textContent = 'Add Test Point';
-    testButton.style.position = 'absolute';
-    testButton.style.bottom = '10px';
-    testButton.style.right = '10px';
-    testButton.addEventListener('click', () => {
-        // Add a test point manually
-        const testPoint = {
-            time: chart.timeScale().getVisibleLogicalRange()?.from || 0,
-            price: 25.0
-        };
-        console.log('About to add test point:', testPoint);
-        
-        // Log state before
-        console.log('Points before:', polylineTool._points.length, JSON.stringify(polylineTool._points));
-        
-        polylineTool._addPoint(testPoint);
-        
-        // Log state after
-        console.log('Points after:', polylineTool._points.length, JSON.stringify(polylineTool._points));
-        console.log('Test point added manually - should show in next render cycle');
-        
-        // Force a manual update of the view
-        console.log('Manually triggering update...');
-        polylineTool._updateView();
-    });
-    chartContainer.appendChild(testButton);
+    // We've removed the info box overlay
     
     // Enable debugging
     (window as any).polylineTool = polylineTool;

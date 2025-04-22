@@ -52,6 +52,7 @@
     "node": ">=22.3"
   },
   "dependencies": {
+    "docusaurus": "~1.14.7",
     "fancy-canvas": "2.1.0"
   },
   "devDependencies": {
