@@ -1,0 +1,11 @@
+{
+  "name": "polyline-drawing-tool",
+  "version": "1.0.0",
+  "description": "A plugin for Lightweight Charts that allows drawing polylines",
+  "main": "polyline-drawing-tool.js",
+  "types": "polyline-drawing-tool.d.ts",
+  "dependencies": {
+    "fancy-canvas": "^2.1.0",
+    "lightweight-charts": "^4.1.0"
+  }
+}
